@@ -1,5 +1,5 @@
-name: notify
-description: Flutter app to demonstrate FCM notifications.
+name: robofy
+description: An App signup and login using auth0 and send notifications to all users.
 
 publish_to: "none"
 
@@ -16,10 +16,17 @@ dependencies:
   firebase_core: ^1.2.0
   firebase_messaging: ^10.0.0
   overlay_support: ^1.2.1
+  http: ^0.13.3
+  cloud_firestore: ^1.0.3
+  
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
+
+  flutter_lints: ^1.0.0
+  flutter_appauth: ^1.1.0
+  flutter_secure_storage: ^4.2.1
 
 flutter:
   uses-material-design: true

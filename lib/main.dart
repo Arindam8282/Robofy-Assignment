@@ -1,210 +1,234 @@
-import 'package:firebase_core/firebase_core.dart';
-import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
-import 'package:notify/model/push_notification.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+import 'package:flutter_appauth/flutter_appauth.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:robofy/Pages/Home.dart';
 import 'package:overlay_support/overlay_support.dart';
 
-Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  print("Handling a background message: ${message.messageId}");
-}
+final FlutterAppAuth appAuth = FlutterAppAuth();
+final FlutterSecureStorage secureStorage = const FlutterSecureStorage();
 
+///  ------------------------------
+///     Auth Variables
+///  ------------------------------
+const AUTH0_DOMAIN = 'dev-flutterauth.us.auth0.com';
+const AUTH0_CLIENT_ID = '5Mpbn48HeqCAAS1UMNRiVf4zMkb1D82O';
+
+const AUTH0_REDIRECT_URI = 'com.adi.notify://login-callback';
+const AUTH0_ISSUER = 'https://$AUTH0_DOMAIN';
 void main() async {
-  runApp(MyApp());
+  runApp(RobofyApp());
 }
 
-class MyApp extends StatelessWidget {
+class RobofyApp extends StatefulWidget {
+  @override
+  _InitApp createState() => _InitApp();
+}
+
+// class RobofyApp extends StatelessWidget {
+//   @override
+//   Widget build(BuildContext context) {
+//     return OverlaySupport(
+//         child: MaterialApp(
+//       debugShowCheckedModeBanner: false,
+//       title: 'Robofy Assignment',
+//       theme: ThemeData(
+//         primarySwatch: Colors.red,
+//       ),
+//       home: HomePage(),
+//     ));
+//   }
+// }
+
+class Login extends StatelessWidget {
+  final loginAction;
+  final String? loginError;
+
+  const Login(this.loginAction, this.loginError);
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: <Widget>[
+        Container(
+          margin: EdgeInsets.only(top: 100.0),
+        ),
+        Text('Robofy Assignment', style: TextStyle(fontSize: 30)),
+        Container(
+            margin: EdgeInsets.only(top: 400.0),
+            child: Center(
+                child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Padding(
+                    padding: EdgeInsets.only(left: 20, right: 20),
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                          textStyle: const TextStyle(fontSize: 25),
+                          primary: Colors.green,
+                          padding: EdgeInsets.only(
+                              left: 40, right: 40, bottom: 10, top: 10)),
+                      onPressed: () {
+                        loginAction();
+                      },
+                      child: const Text('Login'),
+                    )),
+              ],
+            ))),
+        Text(loginError ?? ''),
+      ],
+    );
+  }
+}
+
+class _InitApp extends State<RobofyApp> {
+  bool isBusy = false;
+  bool isLoggedIn = false;
+  String? errorMessage;
+  String? name;
+  String? picture;
+  String? nickname;
+
   @override
   Widget build(BuildContext context) {
     return OverlaySupport(
-      child: MaterialApp(
-        title: 'Notify',
-        theme: ThemeData(
-          primarySwatch: Colors.deepPurple,
-        ),
-        debugShowCheckedModeBanner: false,
-        home: HomePage(),
-      ),
-    );
+        child: MaterialApp(
+            debugShowCheckedModeBanner: false,
+            // title: 'Robofy Assignment',
+            // theme: ThemeData(
+            //   primarySwatch: Colors.red,
+            // ),
+            home: Scaffold(
+                // appBar: AppBar(
+                //   title: Text('Robofy Assignment'),
+                // ),
+                body: Center(
+              child: isBusy
+                  ? CircularProgressIndicator()
+                  : isLoggedIn
+                      ? HomePage(
+                          title: 'Robofy App',
+                          logoutAction: logoutAction,
+                          picture: picture,
+                          fullname: name.toString(),
+                          nickname: nickname.toString(),
+                        )
+                      // Profile(
+                      //     logoutAction: logoutAction,
+                      //     name: name,
+                      //     picture: picture)
+                      : Login(loginAction, errorMessage),
+            ))));
   }
-}
 
-class HomePage extends StatefulWidget {
-  @override
-  _HomePageState createState() => _HomePageState();
-}
+  Map<String, dynamic> parseIdToken(String idToken) {
+    final parts = idToken.split(r'.');
+    assert(parts.length == 3);
 
-class _HomePageState extends State<HomePage> {
-  late final FirebaseMessaging _messaging;
-  late int _totalNotifications;
-  PushNotification? _notificationInfo;
+    return jsonDecode(
+        utf8.decode(base64Url.decode(base64Url.normalize(parts[1]))));
+  }
 
-  void registerNotification() async {
-    await Firebase.initializeApp();
-    _messaging = FirebaseMessaging.instance;
-
-    FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
-
-    NotificationSettings settings = await _messaging.requestPermission(
-      alert: true,
-      badge: true,
-      provisional: false,
-      sound: true,
+  Future<Map> getUserDetails(String accessToken) async {
+    const url = 'https://$AUTH0_DOMAIN/userinfo';
+    final response = await http.get(
+      Uri.parse(url),
+      headers: {'Authorization': 'Bearer $accessToken'},
     );
 
-    if (settings.authorizationStatus == AuthorizationStatus.authorized) {
-      print('User granted permission');
-
-      FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-        print(
-            'Message title: ${message.notification?.title}, body: ${message.notification?.body}, data: ${message.data}');
-
-        // Parse the message received
-        PushNotification notification = PushNotification(
-          title: message.notification?.title,
-          body: message.notification?.body,
-          dataTitle: message.data['title'],
-          dataBody: message.data['body'],
-        );
-
-        setState(() {
-          _notificationInfo = notification;
-          _totalNotifications++;
-        });
-
-        if (_notificationInfo != null) {
-          // For displaying the notification as an overlay
-          showSimpleNotification(
-            Text(_notificationInfo!.title!),
-            leading: NotificationBadge(totalNotifications: _totalNotifications),
-            subtitle: Text(_notificationInfo!.body!),
-            background: Colors.cyan.shade700,
-            duration: Duration(seconds: 2),
-          );
-        }
-      });
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body);
     } else {
-      print('User declined or has not accepted permission');
+      throw Exception('Failed to get user details.');
     }
   }
 
-  // For handling notification when the app is in terminated state
-  checkForInitialMessage() async {
-    await Firebase.initializeApp();
-    RemoteMessage? initialMessage =
-        await FirebaseMessaging.instance.getInitialMessage();
+  Future<void> loginAction() async {
+    setState(() {
+      isBusy = true;
+      errorMessage = '';
+    });
 
-    if (initialMessage != null) {
-      PushNotification notification = PushNotification(
-        title: initialMessage.notification?.title,
-        body: initialMessage.notification?.body,
-        dataTitle: initialMessage.data['title'],
-        dataBody: initialMessage.data['body'],
+    try {
+      final AuthorizationTokenResponse? result =
+          await appAuth.authorizeAndExchangeCode(
+        AuthorizationTokenRequest(
+          AUTH0_CLIENT_ID,
+          AUTH0_REDIRECT_URI,
+          issuer: 'https://$AUTH0_DOMAIN',
+          scopes: ['openid', 'profile', 'offline_access'],
+          promptValues: ['login'],
+        ),
       );
 
+      final idToken = parseIdToken(result!.idToken.toString());
+      final profile = await getUserDetails(result.accessToken.toString());
+
+      await secureStorage.write(
+          key: 'refresh_token', value: result.refreshToken);
+      print("profile ${profile} ${idToken} ${result}");
       setState(() {
-        _notificationInfo = notification;
-        _totalNotifications++;
+        isBusy = false;
+        isLoggedIn = true;
+        name = idToken['name'];
+        picture = profile['picture'];
+        nickname = profile['nickname'];
+      });
+    } catch (e, s) {
+      print('Login error $e-stack:$s');
+      setState(() {
+        isBusy = false;
+        isLoggedIn = false;
+        errorMessage = e.toString();
       });
     }
+  }
+
+  void logoutAction() async {
+    await secureStorage.delete(key: 'refresh_token');
+    setState(() {
+      isLoggedIn = false;
+      isBusy = false;
+    });
   }
 
   @override
   void initState() {
-    _totalNotifications = 0;
-    registerNotification();
-    checkForInitialMessage();
-
-    // For handling notification when the app is in background
-    // but not terminated
-    FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
-      PushNotification notification = PushNotification(
-        title: message.notification?.title,
-        body: message.notification?.body,
-        dataTitle: message.data['title'],
-        dataBody: message.data['body'],
-      );
-
-      setState(() {
-        _notificationInfo = notification;
-        _totalNotifications++;
-      });
-    });
-
+    initAction();
     super.initState();
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text('Notify'),
-        brightness: Brightness.dark,
-      ),
-      body: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Text(
-            'App for capturing Firebase Push Notifications',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: Colors.black,
-              fontSize: 20,
-            ),
-          ),
-          SizedBox(height: 16.0),
-          NotificationBadge(totalNotifications: _totalNotifications),
-          SizedBox(height: 16.0),
-          _notificationInfo != null
-              ? Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'TITLE: ${_notificationInfo!.dataTitle ?? _notificationInfo!.title}',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16.0,
-                      ),
-                    ),
-                    SizedBox(height: 8.0),
-                    Text(
-                      'BODY: ${_notificationInfo!.dataBody ?? _notificationInfo!.body}',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16.0,
-                      ),
-                    ),
-                  ],
-                )
-              : Container(),
-        ],
-      ),
-    );
-  }
-}
+  void initAction() async {
+    final storedRefreshToken = await secureStorage.read(key: 'refresh_token');
+    if (storedRefreshToken == null) return;
 
-class NotificationBadge extends StatelessWidget {
-  final int totalNotifications;
+    setState(() {
+      isBusy = true;
+    });
 
-  const NotificationBadge({required this.totalNotifications});
+    try {
+      final response = await appAuth.token(TokenRequest(
+        AUTH0_CLIENT_ID,
+        AUTH0_REDIRECT_URI,
+        issuer: AUTH0_ISSUER,
+        refreshToken: storedRefreshToken,
+      ));
 
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 40.0,
-      height: 40.0,
-      decoration: new BoxDecoration(
-        color: Colors.red,
-        shape: BoxShape.circle,
-      ),
-      child: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(8.0),
-          child: Text(
-            '$totalNotifications',
-            style: TextStyle(color: Colors.white, fontSize: 20),
-          ),
-        ),
-      ),
-    );
+      final idToken = parseIdToken(response!.idToken.toString());
+      final profile = await getUserDetails(response!.accessToken.toString());
+
+      secureStorage.write(key: 'refresh_token', value: response.refreshToken);
+
+      setState(() {
+        isBusy = false;
+        isLoggedIn = false;
+        name = idToken['name'];
+        picture = profile['picture'];
+      });
+    } catch (e, s) {
+      print('error on refreseh token: $e - stack $s');
+      logoutAction();
+    }
   }
 }
